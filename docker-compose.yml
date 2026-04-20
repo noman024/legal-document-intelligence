@@ -2,10 +2,15 @@
 services:
   api:
     build: .
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     environment:
       LEGAL_OLLAMA_BASE_URL: ${LEGAL_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      # `.env` is not in the image (.dockerignore); huggingface_hub still needs token for gated models.
+      # Compose reads project `.env` for ${...} substitution, so set HF_TOKEN there on the host.
+      HF_TOKEN: ${HF_TOKEN:-}
       HF_HOME: /app/.cache/huggingface
     volumes:
       - ./data:/app/data
