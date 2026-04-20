@@ -1,0 +1,27 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Runtime data (Chroma, SQLite, uploads)
+data/chroma/
+data/feedback.db
+data/uploads/
+*.db-journal
+
+# Local secrets / env
+.env
+.env.local
+
+# Application logs (keep directory with .gitkeep)
+logs/*
+!logs/.gitkeep
+
+# OS
+.DS_Store

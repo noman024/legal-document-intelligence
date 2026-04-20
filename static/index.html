@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Grounded legal draft review: compare system output with operator edits." />
+  <link rel="icon" href="/ui/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet" />
+  <title>Review workspace — Legal document intelligence</title>
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #4f46e5;
+      --accent-hover: #4338ca;
+      --accent-soft: #eef2ff;
+      --success: #059669;
+      --success-bg: #ecfdf5;
+      --danger: #dc2626;
+      --danger-bg: #fef2f2;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.04);
+      --font-ui: "DM Sans", system-ui, sans-serif;
+      --font-draft: "Source Serif 4", Georgia, "Times New Roman", serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font-ui);
+      font-size: 15px;
+      line-height: 1.5;
+      color: var(--text);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .shell {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1.25rem 1rem 3rem;
+    }
+
+    header.app-header {
+      margin-bottom: 1.75rem;
+    }
+
+    header.app-header h1 {
+      margin: 0 0 0.35rem;
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    header.app-header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    header.app-header a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    header.app-header a:hover { text-decoration: underline; }
+
+    .grid-tools {
+      display: grid;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    @media (min-width: 900px) {
+      .grid-tools { grid-template-columns: 1fr 1.1fr; align-items: start; }
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 1.25rem 1.35rem;
+    }
+
+    .card h2 {
+      margin: 0 0 1rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+
+    .field { margin-bottom: 0.85rem; }
+    .field:last-child { margin-bottom: 0; }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+
+    input[type="text"],
+    select,
+    textarea {
+      width: 100%;
+      padding: 0.55rem 0.65rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font: inherit;
+      background: #fafafa;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+      background: var(--surface);
+    }
+
+    textarea.code-ish { font-family: ui-monospace, monospace; font-size: 0.8rem; }
+
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-sm);
+      padding: 1.25rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      background: #fafafa;
+    }
+
+    .dropzone:hover,
+    .dropzone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .dropzone input { position: absolute; width: 0; height: 0; opacity: 0; }
+
+    .dropzone strong { display: block; font-size: 0.95rem; margin-bottom: 0.25rem; }
+    .dropzone span { font-size: 0.8rem; color: var(--muted); }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-top: 0.75rem;
+    }
+
+    button {
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.55rem 1rem;
+      border-radius: var(--radius-sm);
+      border: none;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    button:active:not(:disabled) { transform: scale(0.98); }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+
+    .btn-ghost {
+      background: var(--surface);
+      color: var(--accent);
+      border: 1px solid var(--border);
+    }
+
+    .btn-ghost:hover:not(:disabled) {
+      background: var(--accent-soft);
+      border-color: #c7d2fe;
+    }
+
+    .btn-danger-ghost {
+      background: transparent;
+      color: var(--danger);
+      border: 1px solid transparent;
+      font-weight: 500;
+    }
+
+    .btn-danger-ghost:hover:not(:disabled) {
+      background: var(--danger-bg);
+    }
+
+    .status {
+      margin-top: 0.75rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+      min-height: 1.25rem;
+    }
+
+    .status.error { color: var(--danger); }
+    .status.ok { color: var(--success); }
+
+    /* Compare section */
+    .compare-section {
+      margin-top: 0.5rem;
+    }
+
+    .compare-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .compare-head h2 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .compare-head .hint {
+      font-size: 0.8rem;
+      color: var(--muted);
+      max-width: 28rem;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      align-items: center;
+    }
+
+    .toolbar button {
+      padding: 0.4rem 0.75rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .compare-grid {
+      display: grid;
+      gap: 1rem;
+    }
+
+    @media (min-width: 768px) {
+      .compare-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        align-items: stretch;
+      }
+    }
+
+    .panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 320px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.65rem 1rem;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .panel-header.system {
+      background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+    }
+
+    .panel-header.edit {
+      background: linear-gradient(180deg, #faf5ff 0%, #f3e8ff 35%, #faf5ff 100%);
+    }
+
+    .panel-title {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .panel-title span.badge {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.2rem 0.45rem;
+      border-radius: 4px;
+    }
+
+    .badge-system { background: #e2e8f0; color: #475569; }
+    .badge-edit { background: #ddd6fe; color: #5b21b6; }
+
+    .panel-title h3 {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+
+    .panel-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-body textarea,
+    .panel-body .readonly-draft {
+      flex: 1;
+      width: 100%;
+      min-height: 280px;
+      margin: 0;
+      padding: 1rem 1.1rem;
+      border: none;
+      border-radius: 0;
+      resize: vertical;
+      font-family: var(--font-draft);
+      font-size: 0.95rem;
+      line-height: 1.65;
+      background: #fff;
+    }
+
+    .panel-body .readonly-draft {
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #1e293b;
+    }
+
+    .panel-body textarea {
+      color: #0f172a;
+    }
+
+    .panel-body textarea::placeholder {
+      color: #94a3b8;
+    }
+
+    .panel-footer {
+      padding: 0.5rem 1rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      background: #fafafa;
+    }
+
+    .actions-compare {
+      margin-top: 1rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .actions-compare .btn-primary { padding: 0.65rem 1.25rem; }
+
+    /* Post-feedback */
+    .feedback-result {
+      margin-top: 1.25rem;
+      padding: 1rem 1.25rem;
+      border-radius: var(--radius);
+      border: 1px solid #a7f3d0;
+      background: var(--success-bg);
+      animation: fadeIn 0.35s ease;
+    }
+
+    .feedback-result h3 {
+      margin: 0 0 0.5rem;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--success);
+    }
+
+    .feedback-result pre.diff {
+      margin: 0 0 0.75rem;
+      padding: 0.75rem;
+      background: #fff;
+      border-radius: var(--radius-sm);
+      font-size: 0.75rem;
+      overflow: auto;
+      max-height: 140px;
+      border: 1px solid #d1fae5;
+    }
+
+    .feedback-result ul {
+      margin: 0;
+      padding-left: 1.1rem;
+    }
+
+    .feedback-result li { margin: 0.35rem 0; font-size: 0.88rem; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    /* Evidence */
+    details.evidence {
+      margin-top: 1.5rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    details.evidence summary {
+      padding: 0.85rem 1rem;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.9rem;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    details.evidence summary::-webkit-details-marker { display: none; }
+    details.evidence summary::after {
+      content: "▸";
+      color: var(--muted);
+      transition: transform 0.2s;
+    }
+    details.evidence[open] summary::after { transform: rotate(90deg); }
+
+    .evidence-inner {
+      padding: 0 1rem 1rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .chunk {
+      margin-top: 0.75rem;
+      padding: 0.75rem;
+      background: #f8fafc;
+      border-radius: var(--radius-sm);
+      font-size: 0.78rem;
+      border-left: 3px solid var(--accent);
+    }
+
+    .chunk-meta {
+      font-family: ui-monospace, monospace;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+      font-size: 0.72rem;
+    }
+
+    .chunk-text {
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #334155;
+      max-height: 120px;
+      overflow: auto;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      border: 0;
+    }
+
+    .empty-state {
+      color: var(--muted);
+      font-style: italic;
+      padding: 2rem 1rem;
+      text-align: center;
+    }
+
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 0.35rem;
+    }
+
+    .meta-row code {
+      font-size: 0.72rem;
+      background: #f1f5f9;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      color: #475569;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="app-header">
+      <h1>Review workspace</h1>
+      <p>
+        Grounded drafts from your indexed PDFs. Compare the system output with your edits, then submit feedback to train the loop.
+        <a href="/docs">OpenAPI docs</a>
+      </p>
+    </header>
+
+    <div class="grid-tools">
+      <div class="card">
+        <h2>1 · Ingest</h2>
+        <label class="field">
+          <span class="sr-only">API base URL</span>
+          <span style="font-size:0.8rem;color:var(--muted)">API base</span>
+          <input type="text" id="base" placeholder="http://127.0.0.1:8000" autocomplete="off" />
+        </label>
+        <div
+          class="dropzone"
+          id="dropzone"
+          role="button"
+          tabindex="0"
+          aria-label="Upload PDF file"
+        >
+          <input type="file" id="file" accept=".pdf,application/pdf" />
+          <strong>Drop a PDF here or click to browse</strong>
+          <span>Indexed into Chroma for retrieval</span>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn-primary" id="btnIngest" disabled>Upload &amp; index</button>
+        </div>
+        <div class="status" id="ingestStatus" aria-live="polite"></div>
+      </div>
+
+      <div class="card">
+        <h2>2 · Draft</h2>
+        <div class="field">
+          <label for="task">Task</label>
+          <select id="task">
+            <option value="internal_memo">internal_memo</option>
+            <option value="case_fact_summary">case_fact_summary</option>
+            <option value="document_summary">document_summary</option>
+            <option value="title_review_summary">title_review_summary</option>
+            <option value="notice_summary">notice_summary</option>
+            <option value="document_checklist">document_checklist</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="query">Focus question <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+          <textarea id="query" rows="2" placeholder="e.g. Summarize risks, deadlines, and notice periods."></textarea>
+        </div>
+        <div class="field">
+          <label for="docfilter">doc_id filter <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+          <input id="docfilter" type="text" placeholder="Limit retrieval to one document" />
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn-primary" id="btnDraft">Generate draft</button>
+        </div>
+        <div class="status" id="draftStatus" aria-live="polite"></div>
+        <div class="meta-row" id="draftMeta" hidden>
+          <span>draft_id <code id="draftIdDisplay"></code></span>
+          <span id="citationMeta"></span>
+        </div>
+      </div>
+    </div>
+
+    <section class="compare-section" aria-labelledby="compare-heading">
+      <div class="compare-head">
+        <div>
+          <h2 id="compare-heading">Before &amp; after</h2>
+          <p class="hint">Left: model draft (read-only). Right: your revision—edit here, then submit feedback to record the diff and improve future drafts.</p>
+        </div>
+        <div class="toolbar">
+          <button type="button" class="btn-ghost" id="btnCopyLeft" title="Copy system draft">Copy left</button>
+          <button type="button" class="btn-ghost" id="btnCopyRight" title="Copy your edit">Copy right</button>
+          <button type="button" class="btn-ghost" id="btnResetRight" title="Reset your edit to match system draft">Reset right to left</button>
+        </div>
+      </div>
+
+      <div class="compare-grid">
+        <article class="panel" aria-label="System draft before your edits">
+          <div class="panel-header system">
+            <div class="panel-title">
+              <span class="badge badge-system">Before</span>
+              <h3>System draft</h3>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="readonly-draft empty-state" id="originalPane">Generate a draft to see the model output here.</div>
+          </div>
+          <div class="panel-footer" id="originalFooter">—</div>
+        </article>
+
+        <article class="panel" aria-label="Your edited draft">
+          <div class="panel-header edit">
+            <div class="panel-title">
+              <span class="badge badge-edit">After</span>
+              <h3>Your edit</h3>
+            </div>
+          </div>
+          <div class="panel-body">
+            <label class="sr-only" for="edited">Edited draft text</label>
+            <textarea id="edited" placeholder="Your revised draft will appear here after you generate, or type your own edits…" spellcheck="true"></textarea>
+          </div>
+          <div class="panel-footer" id="editedFooter">—</div>
+        </article>
+      </div>
+
+      <div class="actions-compare">
+        <button type="button" class="btn-primary" id="btnFeedback">Submit operator feedback</button>
+        <button type="button" class="btn-danger-ghost" id="btnClearFeedback">Dismiss result banner</button>
+      </div>
+      <div class="status" id="feedbackStatus" aria-live="polite"></div>
+    </section>
+
+    <div class="feedback-result" id="feedbackResult" hidden>
+      <h3>Feedback recorded</h3>
+      <p style="margin:0 0 0.5rem;font-size:0.88rem;color:#047857">The system captured your diff and correction hints for future drafts of this task.</p>
+      <div class="field">
+        <label style="font-size:0.75rem;">Diff summary</label>
+        <pre class="diff" id="diffSummary"></pre>
+      </div>
+      <div>
+        <label style="font-size:0.75rem;">Correction bullets</label>
+        <ul id="correctionBullets"></ul>
+      </div>
+    </div>
+
+    <details class="evidence" id="evidenceBlock">
+      <summary>Retrieved evidence <span id="evidenceCount" style="font-weight:500;color:var(--muted)"></span></summary>
+      <div class="evidence-inner">
+        <p style="margin:0;font-size:0.8rem;color:var(--muted)">Chunks used to ground the last draft (inspectable citations [1], [2], …).</p>
+        <div id="evidenceList"></div>
+      </div>
+    </details>
+  </div>
+
+  <script>
+    (function () {
+      const $ = (id) => document.getElementById(id);
+
+      const state = {
+        draftId: null,
+        originalText: "",
+        lastEvidence: [],
+      };
+
+      const base = () => ($("base").value || window.location.origin).replace(/\/$/, "");
+
+      $("base").placeholder = window.location.origin;
+
+      function setIngestStatus(msg, isError) {
+        const el = $("ingestStatus");
+        el.textContent = msg;
+        el.className = "status" + (isError ? " error" : msg ? " ok" : "");
+      }
+
+      function setDraftStatus(msg, isError) {
+        const el = $("draftStatus");
+        el.textContent = msg;
+        el.className = "status" + (isError ? " error" : "");
+      }
+
+      function setFeedbackStatus(msg, isError) {
+        const el = $("feedbackStatus");
+        el.textContent = msg;
+        el.className = "status" + (isError ? " error" : msg ? " ok" : "");
+      }
+
+      function wordCount(s) {
+        s = (s || "").trim();
+        if (!s) return 0;
+        return s.split(/\s+/).length;
+      }
+
+      function updateFooters() {
+        const o = state.originalText;
+        const e = $("edited").value;
+        $("originalFooter").textContent = o
+          ? `${wordCount(o)} words · read-only`
+          : "No draft yet";
+        $("editedFooter").textContent = e.trim()
+          ? `${wordCount(e)} words · editable`
+          : "Edit the draft on the right, then submit feedback";
+      }
+
+      function renderOriginalPane() {
+        const pane = $("originalPane");
+        if (!state.originalText) {
+          pane.className = "readonly-draft empty-state";
+          pane.textContent = "Generate a draft to see the model output here.";
+          return;
+        }
+        pane.className = "readonly-draft";
+        pane.textContent = state.originalText;
+      }
+
+      function renderEvidence(list) {
+        state.lastEvidence = list || [];
+        const n = state.lastEvidence.length;
+        $("evidenceCount").textContent = n ? "(" + n + ")" : "";
+        const host = $("evidenceList");
+        host.innerHTML = "";
+        if (!n) {
+          host.innerHTML = "<p style=\"color:var(--muted);font-size:0.85rem;margin:0.5rem 0 0\">No evidence (empty index or no retrieval).</p>";
+          return;
+        }
+        list.forEach((ev) => {
+          const div = document.createElement("div");
+          div.className = "chunk";
+          const meta = document.createElement("div");
+          meta.className = "chunk-meta";
+          meta.textContent = "[" + (ev.index ?? "?") + "] doc=" + (ev.doc_id ?? "?") + " page=" + (ev.page ?? "?") + " score=" + (ev.score != null ? ev.score.toFixed(3) : "—");
+          const tx = document.createElement("div");
+          tx.className = "chunk-text";
+          tx.textContent = ev.text || "";
+          div.appendChild(meta);
+          div.appendChild(tx);
+          host.appendChild(div);
+        });
+      }
+
+      async function copyText(text, okMsg) {
+        try {
+          await navigator.clipboard.writeText(text);
+          setFeedbackStatus(okMsg, false);
+          setTimeout(() => $("feedbackStatus").textContent = "", 2500);
+        } catch {
+          setFeedbackStatus("Could not copy (clipboard permission).", true);
+        }
+      }
+
+      /* Dropzone */
+      const dz = $("dropzone");
+      const fileInput = $("file");
+
+      dz.addEventListener("click", () => fileInput.click());
+
+      dz.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          fileInput.click();
+        }
+      });
+
+      fileInput.addEventListener("change", () => {
+        $("btnIngest").disabled = !fileInput.files?.length;
+        setIngestStatus(fileInput.files?.[0] ? "Ready: " + fileInput.files[0].name : "", false);
+      });
+
+      ["dragenter", "dragover", "dragleave", "drop"].forEach((ev) => {
+        dz.addEventListener(ev, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+      });
+
+      dz.addEventListener("dragover", () => dz.classList.add("dragover"));
+      dz.addEventListener("dragleave", () => dz.classList.remove("dragover"));
+      dz.addEventListener("drop", (e) => {
+        dz.classList.remove("dragover");
+        const f = e.dataTransfer.files?.[0];
+        if (f && f.name.toLowerCase().endsWith(".pdf")) {
+          const dt = new DataTransfer();
+          dt.items.add(f);
+          fileInput.files = dt.files;
+          $("btnIngest").disabled = false;
+          setIngestStatus("Ready: " + f.name, false);
+        } else {
+          setIngestStatus("Please drop a PDF file.", true);
+        }
+      });
+
+      $("btnIngest").onclick = async () => {
+        const f = fileInput.files?.[0];
+        if (!f) {
+          setIngestStatus("Choose a PDF first.", true);
+          return;
+        }
+        $("btnIngest").disabled = true;
+        setIngestStatus("Uploading…", false);
+        const fd = new FormData();
+        fd.append("file", f);
+        try {
+          const r = await fetch(base() + "/ingest", { method: "POST", body: fd });
+          const j = await r.json();
+          if (!r.ok) throw new Error(j.detail || r.statusText);
+          setIngestStatus("Indexed " + (j.indexed_chunks ?? "?") + " chunks · doc_id " + (j.doc_id ?? "—"), false);
+        } catch (e) {
+          setIngestStatus(String(e), true);
+        } finally {
+          $("btnIngest").disabled = !fileInput.files?.length;
+        }
+      };
+
+      $("btnDraft").onclick = async () => {
+        setDraftStatus("");
+        $("draftMeta").hidden = true;
+        $("feedbackResult").hidden = true;
+
+        $("btnDraft").disabled = true;
+        setDraftStatus("Generating draft…");
+
+        const body = {
+          task: $("task").value,
+          query: $("query").value.trim() || null,
+          doc_id_filter: $("docfilter").value.trim() || null,
+        };
+
+        try {
+          const r = await fetch(base() + "/draft", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const j = await r.json();
+          if (!r.ok) throw new Error(typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail || r.statusText));
+
+          state.draftId = j.draft_id;
+          state.originalText = j.text || "";
+          $("edited").value = state.originalText;
+          $("draftIdDisplay").textContent = state.draftId;
+          $("citationMeta").textContent =
+            "citations valid [" + (j.citations_valid || []).join(", ") + "] · invalid [" + (j.citations_invalid || []).join(", ") + "]";
+          $("draftMeta").hidden = false;
+
+          renderOriginalPane();
+          renderEvidence(j.evidence);
+          updateFooters();
+          setDraftStatus("Draft ready — compare and edit on the right.", false);
+        } catch (e) {
+          setDraftStatus(String(e), true);
+        } finally {
+          $("btnDraft").disabled = false;
+        }
+      };
+
+      $("edited").addEventListener("input", updateFooters);
+
+      $("btnCopyLeft").onclick = () => copyText(state.originalText, "System draft copied.");
+
+      $("btnCopyRight").onclick = () => copyText($("edited").value, "Your edit copied.");
+
+      $("btnResetRight").onclick = () => {
+        if (state.originalText) {
+          $("edited").value = state.originalText;
+          updateFooters();
+          setFeedbackStatus("Right panel reset to match system draft.", false);
+          setTimeout(() => $("feedbackStatus").textContent = "", 2000);
+        }
+      };
+
+      $("btnFeedback").onclick = async () => {
+        if (!state.draftId) {
+          setFeedbackStatus("Generate a draft first.", true);
+          return;
+        }
+        const edited = $("edited").value;
+        if (!edited.trim()) {
+          setFeedbackStatus("Your edit is empty.", true);
+          return;
+        }
+
+        $("btnFeedback").disabled = true;
+        setFeedbackStatus("Submitting…", false);
+
+        try {
+          const r = await fetch(base() + "/feedback", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ draft_id: state.draftId, edited_text: edited }),
+          });
+          const j = await r.json();
+          if (!r.ok) throw new Error(j.detail || r.statusText);
+
+          $("diffSummary").textContent = j.diff_summary || "(no diff)";
+          const ul = $("correctionBullets");
+          ul.innerHTML = "";
+          (j.correction_bullets || []).forEach((b) => {
+            const li = document.createElement("li");
+            li.textContent = b;
+            ul.appendChild(li);
+          });
+          $("feedbackResult").hidden = false;
+          $("feedbackResult").scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+          setFeedbackStatus("Feedback saved. Generate another draft to see few-shot improvements when applicable.", false);
+        } catch (e) {
+          setFeedbackStatus(String(e), true);
+        } finally {
+          $("btnFeedback").disabled = false;
+        }
+      };
+
+      $("btnClearFeedback").onclick = () => {
+        $("feedbackResult").hidden = true;
+      };
+
+      updateFooters();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+Example shape of a grounded draft (illustrative; actual text comes from your model and evidence):
+
+## Background
+The materials describe a purchase transaction involving Buyer ABC LLC and Seller XYZ Corp., with a stated closing window and escrow arrangements [1].
+
+## Key dates
+- Closing target referenced as on or before April 15, 2024 [1].
+- Title objection window described as ten business days from receipt of commitment [1].
+
+## Risks / follow-ups
+- Environmental review flagged a recognized environmental condition related to former underground storage; further sampling is noted as recommended prior to closing [1].
+
+(Inline [n] citations refer to evidence indices returned by the API.)

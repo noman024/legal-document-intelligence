@@ -1,0 +1,16 @@
+# API container; run Ollama on the host (or another service) and point LEGAL_OLLAMA_BASE_URL.
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      LEGAL_OLLAMA_BASE_URL: ${LEGAL_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      HF_HOME: /app/.cache/huggingface
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - hf_cache:/app/.cache/huggingface
+
+volumes:
+  hf_cache:
