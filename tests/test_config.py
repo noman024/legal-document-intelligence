@@ -17,6 +17,8 @@ def test_defaults_cover_required_keys() -> None:
     assert 0 <= settings.chunk_overlap < settings.chunk_size
     assert settings.retrieve_top_k > 0
     assert settings.ocr_min_chars_per_page >= 0
+    assert settings.ingest_max_image_frames >= 1
+    assert isinstance(settings.strict_citations, bool)
     assert settings.feedback_few_shot_limit > 0
 
 

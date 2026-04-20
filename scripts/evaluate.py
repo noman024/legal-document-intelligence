@@ -58,7 +58,10 @@ def main() -> None:
             "environmental" in (h.text or "").lower() or "risk" in (h.text or "").lower() for h in hits
         )
 
+    from src.ingestion.formats import INGEST_ALLOWED_SUFFIXES
+
     print("=== Evaluation (repeatable) ===")
+    print(f"ingest.supported_suffixes: {sorted(INGEST_ALLOWED_SUFFIXES)}")
     print(f"structured_extraction.dates_found: {dates_n}")
     print(f"structured_extraction.currency_amounts: {money_n}")
     print(f"structured_extraction.legal_markers: {markers_n}")

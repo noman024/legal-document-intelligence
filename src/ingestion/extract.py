@@ -1,4 +1,4 @@
-"""PDF text extraction with OCR fallback for sparse pages."""
+"""PDF text extraction with OCR fallback for sparse pages; image OCR for scans and notes."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 import fitz  # PyMuPDF
+from PIL import Image, ImageSequence
 
 from src.config import settings
 
@@ -71,3 +72,41 @@ def extract_pages_from_pdf(
 
 def extract_pages_from_pdf_bytes(data: bytes) -> list[tuple[int, str]]:
     return extract_pages_from_pdf(fileobj=io.BytesIO(data))
+
+
+def extract_pages_from_image_bytes(data: bytes) -> list[tuple[int, str]]:
+    """
+    Raster OCR for PNG, JPEG, WebP, TIFF (multi-page), and other formats Pillow opens.
+    Each frame becomes one 1-based page of text.
+    """
+    import pytesseract
+
+    try:
+        img = Image.open(io.BytesIO(data))
+    except Exception as e:
+        raise ValueError(f"Unrecognized or corrupt image: {e}") from e
+
+    max_frames = max(1, settings.ingest_max_image_frames)
+    pages: list[tuple[int, str]] = []
+    try:
+        for i, frame in enumerate(ImageSequence.Iterator(img), start=1):
+            if i > max_frames:
+                logger.warning(
+                    "Image has more than %s frames; truncating (ingest_max_image_frames).",
+                    max_frames,
+                )
+                break
+            try:
+                rgb = frame.convert("RGB")
+                text = pytesseract.image_to_string(rgb) or ""
+            except Exception as e:
+                logger.warning("OCR failed for image frame %s: %s", i, e)
+                text = ""
+            pages.append((i, (text or "").strip()))
+    finally:
+        try:
+            img.close()
+        except Exception:
+            pass
+
+    return pages

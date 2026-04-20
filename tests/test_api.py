@@ -56,9 +56,10 @@ def test_health_ready(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> No
     assert body.get("model_available") is True
 
 
-def test_ingest_rejects_non_pdf(client: TestClient) -> None:
+def test_ingest_rejects_unsupported_extension(client: TestClient) -> None:
     r = client.post("/ingest", files={"file": ("note.txt", b"hello", "text/plain")})
     assert r.status_code == 400
+    assert "detail" in r.json()
 
 
 def test_ingest_rejects_corrupt_pdf(client: TestClient) -> None:
@@ -150,6 +151,44 @@ def test_draft_malformed_json_body(client: TestClient) -> None:
         headers={"Content-Type": "application/json"},
     )
     assert r.status_code == 422
+
+
+def test_ingest_png_image_with_ocr_mock(client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Raster ingest path: OCR mocked so CI does not require Tesseract."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    monkeypatch.setattr(
+        "pytesseract.image_to_string",
+        lambda *_a, **_k: "Memorandum. Closing April 20, 2026. Consideration $50,000.",
+    )
+    buf = BytesIO()
+    Image.new("RGB", (24, 24), color=(240, 240, 240)).save(buf, format="PNG")
+    r = client.post(
+        "/ingest",
+        files={"file": ("handwritten_scan.png", buf.getvalue(), "image/png")},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("source_kind") == "image"
+    assert body.get("indexed_chunks", 0) >= 1
+    st = body.get("structured")
+    assert isinstance(st, dict)
+    assert st.get("page_count", 0) >= 1
+
+
+def test_ingest_image_no_text_returns_400(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    monkeypatch.setattr("pytesseract.image_to_string", lambda *_a, **_k: "")
+    buf = BytesIO()
+    Image.new("RGB", (8, 8), color="white").save(buf, format="PNG")
+    r = client.post("/ingest", files={"file": ("blank.png", buf.getvalue(), "image/png")})
+    assert r.status_code == 400
+    assert "text" in r.json()["detail"].lower()
 
 
 def test_ingest_multi_page_pdf(client: TestClient, tmp_path: Path) -> None:

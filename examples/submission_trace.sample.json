@@ -1,0 +1,53 @@
+{
+  "description": "Illustrative API shapes for reviewers (not live secrets). Timestamps and IDs are examples.",
+  "ingest_pdf_response": {
+    "indexed_chunks": 12,
+    "doc_id": "sample_memo",
+    "filename": "sample_memo.pdf",
+    "source_kind": "pdf",
+    "structured": {
+      "page_count": 1,
+      "dates_found": ["…"],
+      "currency_amounts": ["…"]
+    }
+  },
+  "ingest_image_response": {
+    "indexed_chunks": 3,
+    "doc_id": "whiteboard_scan_a1b2c3d4",
+    "filename": "whiteboard.png",
+    "source_kind": "image",
+    "structured": { "page_count": 1 }
+  },
+  "draft_response": {
+    "draft_id": "550e8400-e29b-41d4-a716-446655440000",
+    "text": "## Background\n… supported by the agreement [1].\n",
+    "task": "internal_memo",
+    "query": "Key dates and escrow.",
+    "evidence": [
+      {
+        "index": 1,
+        "chunk_id": "sample_memo:0:p1",
+        "doc_id": "sample_memo",
+        "page": 1,
+        "score": 0.42,
+        "text": "… excerpt from retrieved chunk …",
+        "structured": null
+      }
+    ],
+    "citations_valid": [1],
+    "citations_invalid": [],
+    "citations_all_valid": true
+  },
+  "draft_strict_mode_http_422": {
+    "detail": {
+      "message": "Draft cites evidence indices not present in retrieval (strict_citations).",
+      "citations_invalid": [99],
+      "citations_valid": [1]
+    }
+  },
+  "feedback_response": {
+    "ok": true,
+    "diff_summary": "… unified diff excerpt …",
+    "correction_bullets": ["Added: …", "Prefer: … (was: …)"]
+  }
+}

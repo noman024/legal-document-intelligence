@@ -21,7 +21,8 @@ from pydantic import BaseModel, Field
 from src.feedback.learn import FeedbackLearner
 from src.feedback.repository import FeedbackRepository
 from src.generation.drafter import Drafter
-from src.ingestion.pipeline import ingest_pdf_bytes
+from src.ingestion.formats import INGEST_ALLOWED_SUFFIXES, is_allowed_ingest_filename, is_image_ingest_filename
+from src.ingestion.pipeline import ingest_image_bytes, ingest_pdf_bytes
 from src.retrieval.store import VectorStore
 
 logger = logging.getLogger(__name__)
@@ -116,6 +117,8 @@ class DraftResponse(BaseModel):
     evidence: list[dict[str, Any]]
     citations_valid: list[int]
     citations_invalid: list[int]
+    #: False when the model referenced [n] outside the evidence list (unsupported grounding).
+    citations_all_valid: bool
 
 
 class FeedbackRequest(BaseModel):
@@ -165,21 +168,35 @@ def health_ready() -> dict[str, Any]:
         }
 
 
-@app.post("/ingest", summary="Upload and index a PDF")
+@app.post("/ingest", summary="Upload and index a PDF or image (PNG, JPEG, WebP, TIFF; OCR for images)")
 async def ingest(file: UploadFile = File(...)) -> dict[str, Any]:
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(400, "Please upload a .pdf file")
+    if not file.filename or not is_allowed_ingest_filename(file.filename):
+        raise HTTPException(
+            400,
+            "Supported file types: " + ", ".join(sorted(INGEST_ALLOWED_SUFFIXES)),
+        )
     data = await file.read()
     if not data:
         raise HTTPException(400, "Empty file")
     try:
-        chunks = ingest_pdf_bytes(data, filename=file.filename)
+        if is_image_ingest_filename(file.filename):
+            chunks = ingest_image_bytes(data, filename=file.filename)
+            source_kind = "image"
+        else:
+            chunks = ingest_pdf_bytes(data, filename=file.filename)
+            source_kind = "pdf"
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     n = get_store().upsert_chunks(chunks)
     doc_id = chunks[0].doc_id if chunks else None
     structured = (chunks[0].extra or {}).get("structured") if chunks else None
-    return {"indexed_chunks": n, "doc_id": doc_id, "filename": file.filename, "structured": structured}
+    return {
+        "indexed_chunks": n,
+        "doc_id": doc_id,
+        "filename": file.filename,
+        "source_kind": source_kind,
+        "structured": structured,
+    }
 
 
 @app.post("/draft", response_model=DraftResponse)
@@ -192,6 +209,21 @@ def draft(req: DraftRequest) -> DraftResponse:
         )
     except RuntimeError as e:
         raise HTTPException(503, str(e)) from e
+
+    citations_all_valid = not d.citations_invalid
+    if settings.strict_citations and d.evidence and d.citations_invalid:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": (
+                    "Draft cites evidence indices not present in retrieval "
+                    "(enable strict_citations only after tuning prompts/models, or disable LEGAL_STRICT_CITATIONS)."
+                ),
+                "citations_invalid": d.citations_invalid,
+                "citations_valid": d.citations_valid,
+            },
+        )
+
     draft_id = get_repo().save_draft(
         task=req.task,
         query=req.query,
@@ -206,6 +238,7 @@ def draft(req: DraftRequest) -> DraftResponse:
         evidence=d.evidence,
         citations_valid=d.citations_valid,
         citations_invalid=d.citations_invalid,
+        citations_all_valid=citations_all_valid,
     )
 
 

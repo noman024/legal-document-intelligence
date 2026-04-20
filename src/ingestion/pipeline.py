@@ -7,7 +7,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from src.ingestion.chunking import chunk_pages
-from src.ingestion.extract import extract_pages_from_pdf, extract_pages_from_pdf_bytes
+from src.ingestion.extract import (
+    extract_pages_from_image_bytes,
+    extract_pages_from_pdf,
+    extract_pages_from_pdf_bytes,
+)
 from src.ingestion.models import Chunk
 from src.ingestion.structure import compact_structure_json, extract_document_structure
 from src.ingestion.text_clean import normalize_whitespace, strip_repeated_headers_footers
@@ -47,6 +51,34 @@ def ingest_pdf(path: Path, doc_id: str | None = None) -> list[Chunk]:
         chunks = _attach_document_structure(chunks, pages)
     if not chunks:
         logger.warning("No text chunks produced for %s (empty or unreadable pages?)", path)
+    return chunks
+
+
+def ingest_image_bytes(
+    data: bytes,
+    *,
+    filename: str = "upload.png",
+    doc_id: str | None = None,
+) -> list[Chunk]:
+    """Ingest a raster image or multi-page TIFF: full OCR per frame, then chunk like PDF pages."""
+    did = doc_id or f"{Path(filename).stem}_{uuid4().hex[:8]}"
+    try:
+        raw = extract_pages_from_image_bytes(data)
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError(f"Failed to read image {filename!r}: {e}") from e
+    pages = _prepare_pages(raw)
+    if not any(t.strip() for _, t in pages):
+        raise ValueError(
+            "No text could be extracted from the image(s). "
+            "Try a clearer scan, larger image, or confirm Tesseract OCR is installed."
+        )
+    chunks = chunk_pages(pages, did, source_path=filename)
+    if chunks:
+        chunks = _attach_document_structure(chunks, pages)
+    if not chunks:
+        logger.warning("No text chunks produced for image upload %s", filename)
     return chunks
 
 

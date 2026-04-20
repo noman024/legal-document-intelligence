@@ -49,6 +49,7 @@ def test_draft_after_ingest_mock_llm(client_with_indexed_pdf: TestClient) -> Non
     assert "[1]" in body["text"] or "April" in body["text"]
     assert len(body["evidence"]) >= 1
     assert body["citations_valid"]
+    assert body.get("citations_all_valid") is True
 
 
 def test_feedback_round_trip_mock_llm(client_with_indexed_pdf: TestClient) -> None:

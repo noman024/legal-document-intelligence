@@ -33,7 +33,11 @@ class Settings(BaseSettings):
     retrieve_dedup_multiplier: int = 2
 
     ocr_min_chars_per_page: int = 50
+    #: Max frames/pages to OCR from a multi-page TIFF (or animated image).
+    ingest_max_image_frames: int = 48
     feedback_few_shot_limit: int = 5
+    #: When True, POST /draft returns 422 if the model cites evidence indices outside retrieval.
+    strict_citations: bool = False
 
     log_file: Path = Path("logs/log.log")
 

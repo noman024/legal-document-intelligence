@@ -520,7 +520,7 @@
     <header class="app-header">
       <h1>Review workspace</h1>
       <p>
-        Grounded drafts from your indexed PDFs. Compare the system output with your edits, then submit feedback to train the loop.
+        Grounded drafts from your indexed PDFs and scanned images. Compare the system output with your edits, then submit feedback to train the loop.
         <a href="/docs">OpenAPI docs</a>
       </p>
     </header>
@@ -538,11 +538,15 @@
           id="dropzone"
           role="button"
           tabindex="0"
-          aria-label="Upload PDF file"
+          aria-label="Upload PDF or image file"
         >
-          <input type="file" id="file" accept=".pdf,application/pdf" />
-          <strong>Drop a PDF here or click to browse</strong>
-          <span>Indexed into Chroma for retrieval</span>
+          <input
+            type="file"
+            id="file"
+            accept=".pdf,.png,.jpg,.jpeg,.webp,.tif,.tiff,application/pdf,image/png,image/jpeg,image/webp,image/tiff"
+          />
+          <strong>Drop a PDF or image here or click to browse</strong>
+          <span>PNG, JPEG, WebP, TIFF, or PDF — indexed into Chroma (OCR for images)</span>
         </div>
         <div class="btn-row">
           <button type="button" class="btn-primary" id="btnIngest" disabled>Upload &amp; index</button>
@@ -667,6 +671,11 @@
 
       $("base").placeholder = window.location.origin;
 
+      function isAllowedIngestFile(name) {
+        const n = (name || "").toLowerCase();
+        return /\.(pdf|png|jpe?g|webp|tif|tiff)$/.test(n);
+      }
+
       function setIngestStatus(msg, isError) {
         const el = $("ingestStatus");
         el.textContent = msg;
@@ -778,21 +787,21 @@
       dz.addEventListener("drop", (e) => {
         dz.classList.remove("dragover");
         const f = e.dataTransfer.files?.[0];
-        if (f && f.name.toLowerCase().endsWith(".pdf")) {
+        if (f && isAllowedIngestFile(f.name)) {
           const dt = new DataTransfer();
           dt.items.add(f);
           fileInput.files = dt.files;
           $("btnIngest").disabled = false;
           setIngestStatus("Ready: " + f.name, false);
         } else {
-          setIngestStatus("Please drop a PDF file.", true);
+          setIngestStatus("Please drop a PDF or supported image (.png, .jpg, .webp, .tif).", true);
         }
       });
 
       $("btnIngest").onclick = async () => {
         const f = fileInput.files?.[0];
         if (!f) {
-          setIngestStatus("Choose a PDF first.", true);
+          setIngestStatus("Choose a PDF or image first.", true);
           return;
         }
         $("btnIngest").disabled = true;
@@ -803,7 +812,15 @@
           const r = await fetch(base() + "/ingest", { method: "POST", body: fd });
           const j = await r.json();
           if (!r.ok) throw new Error(j.detail || r.statusText);
-          setIngestStatus("Indexed " + (j.indexed_chunks ?? "?") + " chunks · doc_id " + (j.doc_id ?? "—"), false);
+          setIngestStatus(
+            "Indexed " +
+              (j.indexed_chunks ?? "?") +
+              " chunks · " +
+              (j.source_kind || "pdf") +
+              " · doc_id " +
+              (j.doc_id ?? "—"),
+            false
+          );
         } catch (e) {
           setIngestStatus(String(e), true);
         } finally {
@@ -839,7 +856,12 @@
           $("edited").value = state.originalText;
           $("draftIdDisplay").textContent = state.draftId;
           $("citationMeta").textContent =
-            "citations valid [" + (j.citations_valid || []).join(", ") + "] · invalid [" + (j.citations_invalid || []).join(", ") + "]";
+            "citations valid [" +
+            (j.citations_valid || []).join(", ") +
+            "] · invalid [" +
+            (j.citations_invalid || []).join(", ") +
+            "]" +
+            (j.citations_all_valid === false ? " · not all valid" : "");
           $("draftMeta").hidden = false;
 
           renderOriginalPane();

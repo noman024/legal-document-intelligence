@@ -3,7 +3,7 @@
 - **Author:** MD Mutasim Billah Noman
 - **Updated on:** 20 April 2026
 
-Local pipeline for **legal-style PDFs**: text extraction (OCR when sparse), **chunking**, **embedding** into Chroma, **semantic retrieval**, **grounded drafting** via **Ollama**, and **learning from operator edits** (few-shot prompt augmentation in SQLite).
+Local pipeline for **legal-style PDFs and raster scans** (PNG, JPEG, WebP, TIFF): native PDF text plus **OCR** when pages are sparse or when ingesting images, **chunking**, **embedding** into Chroma, **semantic retrieval**, **grounded drafting** via **Ollama**, **citation integrity checks**, optional **strict rejection** of drafts with invalid evidence indices, and **learning from operator edits** (few-shot prompt augmentation in SQLite).
 
 Not legal advice. Outputs are drafts grounded on retrieved evidence.
 
@@ -15,7 +15,9 @@ Not legal advice. Outputs are drafts grounded on retrieved evidence.
 flowchart LR
   PDF[PDF] --> Ext[PyMuPDF text]
   Ext --> OCR[Tesseract if sparse]
+  IMG[Raster image / TIFF] --> IOCR[Tesseract per frame]
   OCR --> Chk[Chunks + structure]
+  IOCR --> Chk
   Chk --> E[Embeddings]
   E --> DB[(Chroma)]
   Q[Task + query] --> R[Top-k retrieval]
@@ -24,9 +26,9 @@ flowchart LR
   SQL --> L
 ```
 
-1. **Ingest**: Per-page text; sparse pages get OCR. Text is cleaned, chunked with overlap, and enriched with regex/heuristic **structured** fields (dates, money, emails, headings).
+1. **Ingest**: Per-page PDF text; sparse pages get OCR. **Images** (including multi-page TIFF) are OCR’d per frame, then the same cleaning/chunking path applies. Chunks get regex/heuristic **structured** fields (dates, money, emails, headings).
 2. **Index**: `sentence-transformers` embeddings → persistent Chroma.
-3. **Draft**: Retrieval uses deduplication of identical chunk text. Empty index → clear message, no LLM call. The model sees numbered evidence and is asked for inline `[n]` citations; the API returns **full evidence** for inspection.
+3. **Draft**: Retrieval uses deduplication of identical chunk text. Empty index → clear message, no LLM call. The model sees numbered evidence and is asked for inline `[n]` citations; the API returns **full evidence** for inspection and **`citations_all_valid`**. Set **`LEGAL_STRICT_CITATIONS=true`** to return **422** when the model cites indices outside the retrieved set (draft is not persisted).
 4. **Feedback**: Operator edits are diffed; **few-shot pairs** are stored and reused for the same **task** (similarity-ranked when history is large).
 
 ---
@@ -54,6 +56,7 @@ Open `http://127.0.0.1:8000/` (redirects to `/ui/`) for the **Review workspace**
 ```bash
 python scripts/create_sample_pdf.py          # writes examples/sample_memo.pdf
 python scripts/ingest.py examples/sample_memo.pdf
+python scripts/ingest.py path/to/scan.png   # OCR image → same index as PDFs
 python scripts/demo.py                       # needs Ollama; draft → feedback → draft
 ```
 
@@ -71,7 +74,9 @@ Copy [`.env.example`](.env.example) to `.env`. Main variables use the `LEGAL_` p
 | `LEGAL_EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Embeddings |
 | `LEGAL_CHUNK_SIZE` / `LEGAL_CHUNK_OVERLAP` | `900` / `120` | Chunking |
 | `LEGAL_RETRIEVE_TOP_K` | `8` | Chunks per draft |
-| `LEGAL_OCR_MIN_CHARS_PER_PAGE` | `50` | OCR trigger |
+| `LEGAL_OCR_MIN_CHARS_PER_PAGE` | `50` | OCR trigger (PDF pages with little text) |
+| `LEGAL_INGEST_MAX_IMAGE_FRAMES` | `48` | Max TIFF/animated frames to OCR per upload |
+| `LEGAL_STRICT_CITATIONS` | `false` | If `true`, `POST /draft` returns **422** when the model cites `[n]` outside evidence |
 | `LEGAL_FEEDBACK_FEW_SHOT_LIMIT` | `5` | Max few-shot examples |
 | `LEGAL_LOG_FILE` | `logs/log.log` | App log file |
 
@@ -85,27 +90,29 @@ Logs go to `LEGAL_LOG_FILE` and stderr.
 |--------|------|---------|
 | GET | `/health` | Liveness |
 | GET | `/health/ready` | Ollama reachable + model present |
-| POST | `/ingest` | Multipart PDF upload → index |
-| POST | `/draft` | `task`, optional `query`, optional `doc_id_filter` |
+| POST | `/ingest` | Multipart **PDF** or **image** (`.png`, `.jpg`, `.jpeg`, `.webp`, `.tif`, `.tiff`) → index; response includes `source_kind` |
+| POST | `/draft` | `task`, optional `query`, optional `doc_id_filter`; response includes `citations_all_valid` |
 | POST | `/feedback` | `draft_id`, `edited_text` |
 
 Task strings are defined in `src/generation/prompts.py` (`case_fact_summary`, `document_summary`, `title_review_summary`, `internal_memo`, `notice_summary`, `document_checklist`).
 
-`POST /draft` returns **503** if Ollama is unreachable (with indexed chunks).
+`POST /draft` returns **503** if Ollama is unreachable (with indexed chunks). With **`LEGAL_STRICT_CITATIONS=true`**, it returns **422** if the draft text cites evidence indices not in the retrieval set (no `draft_id` is stored for that attempt).
+
+Example JSON shapes for ingest, draft, feedback, and strict-mode errors: [`examples/submission_trace.sample.json`](examples/submission_trace.sample.json).
 
 ---
 
 ## Project layout
 
 ```
-src/ingestion/    PDF → text → chunks + structured fields
+src/ingestion/    PDF + raster images → text (OCR) → chunks + structured fields
 src/retrieval/    Embeddings + Chroma
 src/generation/   Prompts + Ollama + citation checks
 src/feedback/     SQLite + learning from edits
 src/api/          FastAPI app
 static/           Optional operator UI (`/ui/`)
 scripts/          Sample PDF, ingest CLI, demo, evaluate, smoke tests
-examples/         Sample output snippet
+examples/         Sample memo PDF, draft snippet, submission trace JSON
 tests/            pytest
 ```
 
@@ -150,9 +157,25 @@ Then open `http://127.0.0.1:8000/` or `http://127.0.0.1:8000/docs` as in [Setup]
 
 ## Tests and evaluation
 
+**Automated tests** (103 cases) cover ingestion (PDF, OCR fallback, **image OCR path** with mocked Tesseract), chunking, retrieval, citation validation, drafter behavior, API errors, strict citation **422**, feedback learning, and the static UI.
+
 ```bash
 pytest tests/
-python scripts/evaluate.py    # no Ollama; needs examples/sample_memo.pdf
+python scripts/create_sample_pdf.py   # if examples/sample_memo.pdf is missing
+python scripts/evaluate.py            # no Ollama; downloads embeddings on first run
+```
+
+`scripts/evaluate.py` prints repeatable checks (structured-field counts on the sample memo, citation validator behavior, retrieval dedupe, and a semantic hit on the sample memo). Example output:
+
+```
+=== Evaluation (repeatable) ===
+ingest.supported_suffixes: ['.jpeg', '.jpg', '.pdf', '.png', '.tif', '.tiff', '.webp']
+structured_extraction.dates_found: 2
+structured_extraction.currency_amounts: 2
+structured_extraction.legal_markers: 4
+citation_validation: invalid [99] detected, valid [1,2]
+retrieval_dedupe.unit: 2 unique from 3 hits
+retrieval_sample_memo.relevant_hit: True
 ```
 
 `scripts/smoke_api.sh` exercises the HTTP API (needs running API + Ollama + sample PDF).
@@ -162,5 +185,7 @@ python scripts/evaluate.py    # no Ollama; needs examples/sample_memo.pdf
 ## Assumptions and tradeoffs
 
 - **Assumption**: Tesseract and Ollama are installed locally; embedding weights may download on first use (`HF_HOME` optional).
-- **Tradeoff**: Character-level chunking and lightweight OCR—not full layout analysis.
+- **Assumption**: Non-PDF sources are provided as **raster images** or **PDF**; other office formats are out of scope.
+- **Tradeoff**: Character-level chunking and Tesseract OCR—not handwriting-specialized models or full layout analysis.
 - **Tradeoff**: Few-shot prompt augmentation from edits instead of model fine-tuning—demonstrates the improvement loop without training.
+- **Tradeoff**: `LEGAL_STRICT_CITATIONS` reduces unsupported `[n]` references but may reject drafts until the model reliably follows the prompt; default is off for smoother demos.

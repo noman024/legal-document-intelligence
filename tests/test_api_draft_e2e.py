@@ -55,6 +55,7 @@ def test_draft_returns_evidence_with_citations(api_with_indexed: TestClient) -> 
     body = r.json()
     assert body["citations_valid"] == [1]
     assert not body["citations_invalid"]
+    assert body.get("citations_all_valid") is True
     assert body["evidence"] and body["evidence"][0]["index"] == 1
     assert "page" in body["evidence"][0]
     assert body["evidence"][0]["text"]
@@ -70,6 +71,30 @@ def test_draft_reports_invalid_citations(api_with_indexed: TestClient) -> None:
     assert r.status_code == 200
     body = r.json()
     assert 99 in body["citations_invalid"]
+    assert body.get("citations_all_valid") is False
+
+
+def test_strict_citations_returns_422_without_saving_draft(
+    api_with_indexed: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import src.api.main as api_main
+
+    monkeypatch.setattr(api_main.settings, "strict_citations", True)
+    with patch(
+        "src.generation.drafter.generate_chat",
+        return_value="Unsupported claim [99].",
+    ):
+        r = api_with_indexed.post("/draft", json={"task": "case_fact_summary"})
+    assert r.status_code == 422
+    detail = r.json().get("detail")
+    assert isinstance(detail, dict)
+    assert 99 in detail.get("citations_invalid", [])
+
+    with patch("src.generation.drafter.generate_chat", return_value="Only [1]."):
+        r2 = api_with_indexed.post("/draft", json={"task": "case_fact_summary"})
+    assert r2.status_code == 200
+    assert r2.json().get("citations_all_valid") is True
 
 
 def test_feedback_updates_learning_and_improves_second_draft(api_with_indexed: TestClient) -> None:

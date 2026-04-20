@@ -7,7 +7,7 @@ from pathlib import Path
 import fitz
 import pytest
 
-from src.ingestion.pipeline import ingest_pdf, ingest_pdf_bytes
+from src.ingestion.pipeline import ingest_image_bytes, ingest_pdf, ingest_pdf_bytes
 
 
 def _make_pdf(path: Path, body: str, *, pages: int = 1) -> None:
@@ -69,6 +69,40 @@ def test_ingest_pdf_ocr_fallback_is_invoked_for_sparse_pages(
     assert calls["n"] >= 1
     assert chunks
     assert "RECOVERED" in chunks[0].text
+
+
+def test_ingest_image_bytes_uses_ocr_and_structure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    monkeypatch.setattr(
+        "pytesseract.image_to_string",
+        lambda *_a, **_k: "Internal memo. Closing April 15, 2024. Escrow $99,000.",
+    )
+    buf = BytesIO()
+    Image.new("RGB", (40, 40), color=(250, 250, 250)).save(buf, format="PNG")
+    chunks = ingest_image_bytes(buf.getvalue(), filename="whiteboard.png")
+    assert chunks
+    assert "whiteboard_" in chunks[0].doc_id
+    struct = chunks[0].extra.get("structured")
+    assert struct and struct.get("page_count") == 1
+
+
+def _png_bytes_white_small() -> bytes:
+    from io import BytesIO
+
+    from PIL import Image
+
+    b = BytesIO()
+    Image.new("RGB", (4, 4), color="white").save(b, format="PNG")
+    return b.getvalue()
+
+
+def test_ingest_image_bytes_empty_ocr_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("pytesseract.image_to_string", lambda *_a, **_k: "")
+    with pytest.raises(ValueError, match="No text could be extracted"):
+        ingest_image_bytes(_png_bytes_white_small(), filename="blank.png")
 
 
 def test_ingest_pdf_repeated_headers_are_stripped(
